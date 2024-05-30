@@ -266,7 +266,7 @@ class RegloIccPump:
         self._assert_valid_ch_no(ch_no)
         self.pump_vol(
             ch_no=ch_no,
-            direction=self.dispense_dirs[ch_no].opposite(),
+            direction=self.dispense_dirs[ch_no],
             vol=vol,
             rate=rate,
             **kwargs)
