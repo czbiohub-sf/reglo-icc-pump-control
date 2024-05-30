@@ -6,6 +6,9 @@ from typing import Callable, Dict, Iterable, List, Optional, TextIO, Union
 import serial
 
 
+__all__ = ["RegloIccPump"]
+
+
 class _enums:
     class PumpDirection(Enum):
         CW = "cw"
