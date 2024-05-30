@@ -12,10 +12,16 @@ __all__ = ["RegloIccPump"]
 
 class _enums:
     class PumpDirection(Enum):
+        """Pump rotor rotation direction, as viewed from the front"""
+
+        # Clockwise
         CW = "cw"
+
+        # Counter-clockwise
         CCW = "ccw"
 
         def opposite(self) -> '_enums.PumpDirection':
+            """Return the opposite direction"""
             return self.CW if type(self)(self) == self.CCW else self.CCW
 
 
@@ -24,18 +30,23 @@ _PumpDirectionOrLiteral = Union[_enums.PumpDirection, Literal["cw", "ccw"]]
 
 class _errors:
     class RegloIccPumpError(Exception):
+        """Superclass of all other errors"""
         pass
 
     class CommandTimeout(RegloIccPumpError):
+        """No response was received to a command"""
         pass
 
     class InvalidResponse(RegloIccPumpError):
+        """Data received from the pump did not match expectations"""
         pass
 
     class RemoteError(RegloIccPumpError):
+        """The pump responded to a command with an error"""
         pass
 
     class InvalidTubingId(RegloIccPumpError):
+        """The pump reported the specified tubing inner diameter is invalid"""
         pass
 
 
@@ -68,6 +79,26 @@ class RegloIccPump:
                 Dict[int, _PumpDirectionOrLiteral]] = None,
             tubing_ids: Optional[Dict[int, float]] = None,
             ):
+        """
+        Initialize a driver instance using the specified serial port and
+        perform initial configuration of the pump.
+
+        :param ser_port: `serial.Serial` instance (or something with a
+            compatible interface) to use for communications. Note that the
+            `timeout` and `baudrate` attributes will be re-set if they exist.
+        :param pump_addr: Pump address. If not daisy-chaining, usually this
+            should be left as default. Pumps are supposed to ship with the
+            address set to 1.
+        :param dispense_dirs: Mapping of channel numbers to rotation directions
+            defining the "dispense" direction for each channel as used by
+            :meth:`dispense_vol` and :meth:`aspirate_vol`.
+        :param tubing_ids: Mapping of channel numbers to the inner diameter of
+            tubing used on each channel (see :meth:`set_tubing_id`). If
+            ``None``, the pump will use whatever values were in its memory.
+
+        :raises CommandTimeout, InvalidResponse, RemoteError:
+            (see class descriptions)
+        """
         self.ser_port = ser_port
         if hasattr(ser_port, 'timeout'):
             self.ser_port.timeout = self.CMD_TIMEOUT_S
@@ -93,6 +124,19 @@ class RegloIccPump:
     @classmethod
     def from_serial_portname(cls, portname: str, *args, **kwargs
                              ) -> 'RegloIccPump':
+        """
+        Opens a serial port by name and initializes a :class:`RegloIccPump`
+        instance with it
+
+        Parameters and exceptions are the same as for :meth:`__init__`, except
+        that ``portname`` takes the place of ``ser_port``, and pyserial may
+        raise :exc:`serial.SerialException`.
+
+        :param portname: Port identifier to pass to ``serial.Serial()``,
+            e.g. ``"COM42"``, ``"/dev/ttyACM41"``, etc.
+
+        :returns: New :class:`RegloIccPump` instance
+        """
         ser_port = serial.Serial(
             portname, cls.BAUDRATE, timeout=cls.CMD_TIMEOUT_S)
         return cls(ser_port, *args, **kwargs)
@@ -150,6 +194,19 @@ class RegloIccPump:
         return return_vals
 
     def set_tubing_id(self, ch_no: int, inner_diam: float) -> float:
+        """
+        Sets the inner diameter of the tubing for a given channel
+
+        :param ch_no: Pump channel number
+        :param inner_diam: Tubing, inner diameter, in mm. Must match one of
+            the values listed in the pump documentation.
+
+        :returns: The value reported back by the pump, in mm
+
+        :raises InvalidTubingId: if the pump rejected the given value
+        :raises CommandTimeout, InvalidResponse, RemoteError:
+            (see class descriptions)
+        """
         self._assert_valid_ch_no(ch_no)
         try:
             self._run_cmd(
@@ -169,6 +226,20 @@ class RegloIccPump:
             rate: float,  # mL/minute
             blocking: bool = True
             ) -> None:
+        """
+        Commands the pump to pump a volume of liquid with a specified rotation
+        direction and flow rate
+
+        :param ch_no: Pump channel number
+        :param direction: Direction the pump rotor should rotate in
+        :param vol: Volume to pump in mL
+        :param rate: Pump rate in mL/minute
+        :param blocking: If true, only returns after pump operation finishes,
+            otherwise returns immediately; defaults to ``True``
+
+        :raises CommandTimeout, InvalidResponse, RemoteError:
+            (see class descriptions)
+        """
         direction = self.PumpDirection(direction)
         dir_cmd = "J" if direction == self.PumpDirection.CW else "K"
         self._run_cmd(f"{ch_no}{dir_cmd}{self.pump_addr}")  # set rotation dir
@@ -182,8 +253,16 @@ class RegloIccPump:
         if blocking:
             self.wait_for_stop(ch_no)
 
-    def aspirate_vol(self, ch_no: int, vol: float, rate: float, **kwargs
-                     ) -> None:
+    def dispense_vol(self, ch_no: int, vol: float, rate: float,
+                     *args, **kwargs) -> None:
+        """
+        Similar to :meth:`pump_vol` except rotation direction is determined by
+        configuration (pump rotates in the "dispense" direction as set for
+        this channel)
+
+        Arguments and exceptions are the same as for :meth:`pump_vol` except
+        that there is no ``direction`` parameter.
+        """
         self._assert_valid_ch_no(ch_no)
         self.pump_vol(
             ch_no=ch_no,
@@ -192,8 +271,16 @@ class RegloIccPump:
             rate=rate,
             **kwargs)
 
-    def dispense_vol(self, ch_no: int, vol: float, rate: float,
-                     *args, **kwargs) -> None:
+    def aspirate_vol(self, ch_no: int, vol: float, rate: float, **kwargs
+                     ) -> None:
+        """
+        Similar to :meth:`pump_vol` except rotation direction is determined by
+        configuration (pump rotates *opposite to* the "dispense" direction as
+        set for this channel)
+
+        Arguments and exceptions are the same as for :meth:`pump_vol` except
+        that there is no ``direction`` parameter.
+        """
         self._assert_valid_ch_no(ch_no)
         self.pump_vol(
             ch_no=ch_no,
@@ -203,12 +290,32 @@ class RegloIccPump:
             **kwargs)
 
     def is_running(self, ch_no: int) -> bool:
+        """
+        Check whether the specified channel is currently pumping
+
+        :param ch_no: Pump channel number
+
+        :returns: `True` if specified channel is currently busy pumping,
+            `False` if not
+
+        :raises CommandTimeout, InvalidResponse, RemoteError:
+            (see class descriptions)
+        """
         self._assert_valid_ch_no(ch_no)
         result = self._run_cmd(
             f"{ch_no}E{self.pump_addr}", check_success=False)
         return result == b"+"
 
     def wait_for_stop(self, ch_no: Optional[int] = None) -> None:
+        """
+        Poll the status of a particular channel (or all channels) until
+        pumping is complete.
+
+        :param ch_no: Channel number to check; if ``None``, check all channels
+
+        :raises CommandTimeout, InvalidResponse, RemoteError:
+            (see class descriptions)
+        """
         if ch_no is None:
             for ch_no_ in self.channel_nos:
                 self.wait_for_stop(ch_no_)
@@ -218,6 +325,14 @@ class RegloIccPump:
         # print(f"XXXX done waiting for {ch_no}")
 
     def show_msg(self, msg: str) -> None:
+        """
+        Shows a message on the display, if present.
+
+        :param msg: Text to display, up to 15 characters
+
+        :raises CommandTimeout, InvalidResponse, RemoteError:
+            (see class descriptions)
+        """
         self._run_cmd(f"{self.pump_addr}DA{msg[:15]}")
 
     @property
