@@ -1,7 +1,7 @@
 from enum import Enum
 import math
 import time
-from typing import Callable, Dict, Iterable, List, Optional, TextIO, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, TextIO, Union
 
 import serial
 
@@ -14,7 +14,7 @@ class _enums:
         CW = "cw"
         CCW = "ccw"
 
-        def opposite(self):
+        def opposite(self) -> '_enums.PumpDirection':
             return self.CW if type(self)(self) == self.CCW else self.CCW
 
 
@@ -49,7 +49,7 @@ class RegloIccPump:
     DEFAULT_DISPENSE_DIR = PumpDirection.CW
 
     channel_nos: List[int]
-    dispense_dirs: Dict[int, PumpDirection]
+    dispense_dirs: Dict[int, _enums.PumpDirection]
     pump_addr: int
     pump_serial_no: str
     pump_model_no: str
@@ -61,7 +61,7 @@ class RegloIccPump:
             ser_port: serial.Serial,
             pump_addr: int = 1,
             dispense_dirs: Optional[
-                Dict[int, 'RegloIccPump.PumpDirection']] = None,
+                Dict[int, _enums.PumpDirection]] = None,
             tubing_ids: Optional[Dict[int, float]] = None,
             ):
         self.ser_port = ser_port
@@ -78,7 +78,7 @@ class RegloIccPump:
         if dispense_dirs is not None:
             self.dispense_dirs.update({
                 k: self.PumpDirection(v) for (k, v) in dispense_dirs.items()})
-        self.tubing_ids = {}
+        self.tubing_ids: Dict[int, float] = {}
         if tubing_ids is not None:
             for ch_no, tubing_id in tubing_ids.items():
                 self.set_tubing_id(ch_no, tubing_id)
@@ -87,29 +87,30 @@ class RegloIccPump:
             self._ask_pump_info()
 
     @classmethod
-    def from_serial_portname(cls, portname: str, *args, **kwargs):
+    def from_serial_portname(cls, portname: str, *args, **kwargs
+                             ) -> 'RegloIccPump':
         ser_port = serial.Serial(
             portname, cls.BAUDRATE, timeout=cls.CMD_TIMEOUT_S)
         return cls(ser_port, *args, **kwargs)
 
-    def _ask_num_channels(self):
+    def _ask_num_channels(self) -> int:
         return self._run_query(f"{self.pump_addr}xA", (int,))[0]
 
-    def _ask_serial_no(self):
+    def _ask_serial_no(self) -> str:
         return self._run_query(f"{self.pump_addr}xS", (str,))[0]
 
-    def _ask_pump_info(self):
+    def _ask_pump_info(self) -> List[str]:
         return self._run_query(f"{self.pump_addr}#", (str, str, str))
 
-    def _assert_valid_ch_no(self, ch_no: int):
+    def _assert_valid_ch_no(self, ch_no: int) -> None:
         if ch_no not in self.channel_nos:
             raise ValueError(f"Invalid channel number: {ch_no!r}")
 
-    def _send_cmd(self, cmd: str):
+    def _send_cmd(self, cmd: str) -> None:
         # print("XXXX cmd is", cmd)
         self.ser_port.write(cmd.encode() + b"\r")
 
-    def _run_cmd(self, cmd: str, check_success: bool = True):
+    def _run_cmd(self, cmd: str, check_success: bool = True) -> bytes:
         self._send_cmd(cmd)
         resp = self.ser_port.read(1)
         if not resp:
@@ -120,7 +121,8 @@ class RegloIccPump:
             raise self.RemoteError()
         return resp
 
-    def _run_query(self, cmd: str, field_types: Iterable[Callable]):
+    def _run_query(self, cmd: str, field_types: Iterable[Callable]
+                   ) -> List[Any]:
         field_types = list(field_types)
         self._send_cmd(cmd)
         resp = self.ser_port.read_until(b"\r\n").decode("ascii").strip()
@@ -143,25 +145,26 @@ class RegloIccPump:
             return_vals.append(conv)
         return return_vals
 
-    def set_tubing_id(self, ch_no: int, inner_diam: float):
+    def set_tubing_id(self, ch_no: int, inner_diam: float) -> float:
         self._assert_valid_ch_no(ch_no)
         try:
             self._run_cmd(
                 f"{ch_no}++{self.pump_addr}{round(inner_diam * 100.):04d}")
-        except RemoteError:
+        except self.RemoteError:
             raise self.InvalidTubingId(inner_diam)
         resp_val, resp_unit = self._run_query(
             f"{ch_no}++{self.pump_addr}", [float, str])
         self.tubing_ids[ch_no] = resp_val
+        return resp_val
 
     def pump_vol(
             self,
             ch_no: int,
-            direction: Union[str, 'RegloIccPump.PumpDirection'],
+            direction: Union[str, _enums.PumpDirection],
             vol: float,  # mL
             rate: float,  # mL/minute
             blocking: bool = True
-            ):
+            ) -> None:
         direction = self.PumpDirection(direction)
         dir_cmd = "J" if direction == self.PumpDirection.CW else "K"
         self._run_cmd(f"{ch_no}{dir_cmd}{self.pump_addr}")  # set rotation dir
@@ -175,9 +178,10 @@ class RegloIccPump:
         if blocking:
             self.wait_for_stop(ch_no)
 
-    def aspirate_vol(self, ch_no: int, vol: float, rate: float, **kwargs):
+    def aspirate_vol(self, ch_no: int, vol: float, rate: float, **kwargs
+                     ) -> None:
         self._assert_valid_ch_no(ch_no)
-        return self.pump_vol(
+        self.pump_vol(
             ch_no=ch_no,
             direction=self.dispense_dirs[ch_no].opposite(),
             vol=vol,
@@ -185,22 +189,22 @@ class RegloIccPump:
             **kwargs)
 
     def dispense_vol(self, ch_no: int, vol: float, rate: float,
-                     *args, **kwargs):
+                     *args, **kwargs) -> None:
         self._assert_valid_ch_no(ch_no)
-        return self.pump_vol(
+        self.pump_vol(
             ch_no=ch_no,
             direction=self.dispense_dirs[ch_no],
             vol=vol,
             rate=rate,
             **kwargs)
 
-    def is_running(self, ch_no: int):
+    def is_running(self, ch_no: int) -> bool:
         self._assert_valid_ch_no(ch_no)
         result = self._run_cmd(
             f"{ch_no}E{self.pump_addr}", check_success=False)
         return result == b"+"
 
-    def wait_for_stop(self, ch_no: Optional[int] = None):
+    def wait_for_stop(self, ch_no: Optional[int] = None) -> None:
         if ch_no is None:
             for ch_no_ in self.channel_nos:
                 self.wait_for_stop(ch_no_)
@@ -209,18 +213,18 @@ class RegloIccPump:
             pass
         # print(f"XXXX done waiting for {ch_no}")
 
-    def show_msg(self, msg: str):
+    def show_msg(self, msg: str) -> None:
         self._run_cmd(f"{self.pump_addr}DA{msg[:15]}")
 
     @staticmethod
-    def _format_vol_type2(vol: float):
+    def _format_vol_type2(vol: float) -> str:
         left, right = f"{vol:.3e}".rsplit("e", 1)
         m_str = "".join(left.split("."))
         exp = int(right)
         return f"{m_str}{exp:+1d}"
 
     @staticmethod
-    def _format_discrete_type2(vol: float):
+    def _format_discrete_type2(vol: float) -> str:
         left, right = f"{vol:.3e}".rsplit("e", 1)
         m_str = "".join(left.split("."))
         exp = int(right)
