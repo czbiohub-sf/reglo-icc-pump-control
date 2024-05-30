@@ -51,10 +51,12 @@ class RegloIccPump:
     channel_nos: List[int]
     dispense_dirs: Dict[int, _enums.PumpDirection]
     pump_addr: int
-    pump_serial_no: str
-    pump_model_no: str
-    pump_sw_ver: str
-    pump_head_code: str
+    dispense_dirs: Dict[int, _PumpDirectionOrLiteral]
+    _channel_nos: List[int]
+    _pump_serial_no: str
+    _pump_model_no: str
+    _pump_sw_ver: str
+    _pump_head_code: str
 
     def __init__(
             self,
@@ -69,10 +71,10 @@ class RegloIccPump:
             self.ser_port.timeout = self.CMD_TIMEOUT_S
         if hasattr(ser_port, 'baudrate'):
             self.ser_port.baudrate = self.BAUDRATE
-        self.pump_addr = pump_addr
+        self._pump_addr = pump_addr
         self._run_cmd(f"{self.pump_addr}~1")
         n_channels = self._ask_num_channels()
-        self.channel_nos = list(range(1, n_channels+1))
+        self._channel_nos = list(range(1, n_channels+1))
         self.dispense_dirs = {
             x: self.DEFAULT_DISPENSE_DIR for x in self.channel_nos}
         if dispense_dirs is not None:
@@ -82,8 +84,8 @@ class RegloIccPump:
         if tubing_ids is not None:
             for ch_no, tubing_id in tubing_ids.items():
                 self.set_tubing_id(ch_no, tubing_id)
-        self.pump_serial_no = self._ask_serial_no()
-        self.pump_model_no, self.pump_sw_ver, self.pump_head_code = \
+        self._pump_serial_no = self._ask_serial_no()
+        self._pump_model_no, self._pump_sw_ver, self._pump_head_code = \
             self._ask_pump_info()
 
     @classmethod
@@ -215,6 +217,30 @@ class RegloIccPump:
 
     def show_msg(self, msg: str) -> None:
         self._run_cmd(f"{self.pump_addr}DA{msg[:15]}")
+
+    @property
+    def channel_nos(self) -> List[int]:
+        """List of valid channel numbers"""
+        return list(self._channel_nos)
+
+    @property
+    def model_no(self) -> str:
+        """Model number reported by the pump"""
+        return self._pump_model_no
+
+    @property
+    def serial_no(self) -> str:
+        """Serial number reported by the pump"""
+        return self._pump_serial_no
+
+    @property
+    def sw_ver(self) -> str:
+        """Software version reported by the pump"""
+        return self._pump_sw_ver
+
+    @property
+    def head_code(self) -> str:
+        return self._pump_head_code
 
     @staticmethod
     def _format_vol_type2(vol: float) -> str:
