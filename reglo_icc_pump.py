@@ -1,7 +1,8 @@
 from enum import Enum
 import math
 import time
-from typing import Any, Callable, Dict, Iterable, List, Optional, TextIO, Union
+from typing import (
+    Any, Callable, Dict, Iterable, List, Literal, Optional, TextIO, Union)
 
 import serial
 
@@ -16,6 +17,9 @@ class _enums:
 
         def opposite(self) -> '_enums.PumpDirection':
             return self.CW if type(self)(self) == self.CCW else self.CCW
+
+
+_PumpDirectionOrLiteral = Union[_enums.PumpDirection, Literal["cw", "ccw"]]
 
 
 class _errors:
@@ -48,8 +52,6 @@ class RegloIccPump:
 
     DEFAULT_DISPENSE_DIR = PumpDirection.CW
 
-    channel_nos: List[int]
-    dispense_dirs: Dict[int, _enums.PumpDirection]
     pump_addr: int
     dispense_dirs: Dict[int, _PumpDirectionOrLiteral]
     _channel_nos: List[int]
@@ -63,7 +65,7 @@ class RegloIccPump:
             ser_port: serial.Serial,
             pump_addr: int = 1,
             dispense_dirs: Optional[
-                Dict[int, _enums.PumpDirection]] = None,
+                Dict[int, _PumpDirectionOrLiteral]] = None,
             tubing_ids: Optional[Dict[int, float]] = None,
             ):
         self.ser_port = ser_port
@@ -162,7 +164,7 @@ class RegloIccPump:
     def pump_vol(
             self,
             ch_no: int,
-            direction: Union[str, _enums.PumpDirection],
+            direction: _PumpDirectionOrLiteral,
             vol: float,  # mL
             rate: float,  # mL/minute
             blocking: bool = True
