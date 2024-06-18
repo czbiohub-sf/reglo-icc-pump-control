@@ -63,8 +63,8 @@ class RegloIccPump:
 
     DEFAULT_DISPENSE_DIR = PumpDirection.CW
 
-    pump_addr: int
     dispense_dirs: Dict[int, _PumpDirectionOrLiteral]
+    _pump_addr: int
     _channel_nos: List[int]
     _pump_serial_no: str
     _pump_model_no: str
@@ -337,7 +337,7 @@ class RegloIccPump:
 
     @property
     def pump_addr(self) -> int:
-        """Pump address"""
+        """Pump address -- see :meth:`__init__`"""
         return self._pump_addr
 
     @property
