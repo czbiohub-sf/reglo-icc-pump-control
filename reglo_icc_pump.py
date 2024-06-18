@@ -336,6 +336,11 @@ class RegloIccPump:
         self._run_cmd(f"{self.pump_addr}DA{msg[:15]}")
 
     @property
+    def pump_addr(self) -> int:
+        """Pump address"""
+        return self._pump_addr
+
+    @property
     def channel_nos(self) -> List[int]:
         """List of valid channel numbers"""
         return list(self._channel_nos)
