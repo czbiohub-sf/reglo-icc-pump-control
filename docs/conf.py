@@ -7,7 +7,11 @@ project = 'reglo-icc-pump-control'
 copyright = '2024, Greg Courville'
 author = 'Greg Courville <greg.courville@czbiohub.org>'
 
-extensions = ['sphinx.ext.autodoc']
+extensions = [
+    'sphinx.ext.autodoc',
+    'sphinx.ext.githubpages',
+    #'sphinx.ext.viewcode'
+    ]
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
