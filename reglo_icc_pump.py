@@ -242,6 +242,8 @@ class RegloIccPump:
         """
         direction = self.PumpDirection(direction)
         dir_cmd = "J" if direction == self.PumpDirection.CW else "K"
+        if self.is_running(ch_no):
+            self.stop(ch_no)
         self._run_cmd(f"{ch_no}{dir_cmd}{self.pump_addr}")  # set rotation dir
         self._run_cmd(f"{ch_no}O{self.pump_addr}")  # set to vol/time mode
         self._run_cmd(f"{ch_no}xff{self.pump_addr}1")  # speed from flow rate
@@ -288,6 +290,22 @@ class RegloIccPump:
             vol=vol,
             rate=rate,
             **kwargs)
+
+    def stop(self, ch_no: Optional[int] = None) -> None:
+        """
+        Immediately stop pumping on the specified channel (or all channels).
+
+        :param ch_no: Channel number to stop; if ``None``, stop all channels
+
+        :raises CommandTimeout, InvalidResponse, RemoteError:
+            (see class descriptions)
+        """
+        if ch_no is None:
+            for ch_no_ in self.channel_nos:
+                self.stop(ch_no_)
+            return
+        self._assert_valid_ch_no(ch_no)
+        self._run_cmd(f"{ch_no}I{self.pump_addr}")  # stop!
 
     def is_running(self, ch_no: int) -> bool:
         """
