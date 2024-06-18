@@ -14,10 +14,10 @@ class _enums:
     class PumpDirection(Enum):
         """Pump rotor rotation direction, as viewed from the front"""
 
-        # Clockwise
+        #: Clockwise
         CW = "cw"
 
-        # Counter-clockwise
+        #: Counter-clockwise
         CCW = "ccw"
 
         def opposite(self) -> '_enums.PumpDirection':
