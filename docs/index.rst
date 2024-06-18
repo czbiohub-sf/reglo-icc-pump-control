@@ -11,7 +11,6 @@ Enums
 -----
 .. autoclass:: reglo_icc_pump.RegloIccPump.PumpDirection
    :members:
-   :undoc-members:
 
 Exceptions
 ----------
@@ -29,4 +28,3 @@ Usage example
 =============
 .. literalinclude:: usage_example.py
    :language: python
-
