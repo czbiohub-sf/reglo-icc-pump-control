@@ -7,7 +7,7 @@ include = ["reglo_icc_pump"]
 
 [project]
 name = "reglo-icc-pump-control"
-version = "0.1.4"
+version = "0.2.1"
 readme = "README.md"
 requires-python = ">=3.6"
 license = {file = "LICENSE"}
