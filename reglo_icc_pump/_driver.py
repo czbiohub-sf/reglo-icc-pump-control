@@ -2,9 +2,11 @@ from enum import Enum
 import math
 import time
 from typing import (
-    Any, Callable, Dict, Iterable, List, Literal, Optional, TextIO, Union)
+    Any, Callable, Dict, Iterable, List, Literal, Optional, TextIO, Tuple,
+    Union)
 
 import serial
+import serial.tools.list_ports
 
 from . import types
 
@@ -17,6 +19,8 @@ class RegloIccPump:
     CMD_TIMEOUT_S = 2.
 
     RegloIccPumpError = types.RegloIccPumpError
+    DeviceNotFound = types.DeviceNotFound
+    SerialNoMismatch = types.SerialNoMismatch
     CommandTimeout = types.CommandTimeout
     InvalidResponse = types.InvalidResponse
     RemoteError = types.RemoteError
@@ -24,6 +28,9 @@ class RegloIccPump:
     PumpDirection = types.PumpDirection
 
     DEFAULT_DISPENSE_DIR = PumpDirection.CW
+    USB_HW_IDS = {
+        (0x265C, 0x0001),
+        }
 
     dispense_dirs: Dict[int, _PumpDirectionOrLiteral]
     _pump_addr: int
@@ -40,6 +47,7 @@ class RegloIccPump:
             dispense_dirs: Optional[
                 Dict[int, _PumpDirectionOrLiteral]] = None,
             tubing_ids: Optional[Dict[int, float]] = None,
+            serial_no: Optional[str] = None,
             ):
         """
         Initialize a driver instance using the specified serial port and
@@ -57,7 +65,12 @@ class RegloIccPump:
         :param tubing_ids: Mapping of channel numbers to the inner diameter of
             tubing used on each channel (see :meth:`set_tubing_id`). If
             ``None``, the pump will use whatever values were in its memory.
+        :param serial_no: If not ``None``, this will be checked against the
+            serial number reported by the pump and :class:`SerialNoMismatch`
+            will be raised in case of a mismatch.
 
+        :raises SerialNoMismatch: if the serial number reported by the pump
+            doesn't match the one (optionally) specified
         :raises CommandTimeout, InvalidResponse, RemoteError:
             (see class descriptions)
         """
@@ -67,8 +80,13 @@ class RegloIccPump:
         if hasattr(ser_port, 'baudrate'):
             self.ser_port.baudrate = self.BAUDRATE
         self._pump_addr = pump_addr
-        self._run_cmd(f"{self.pump_addr}~1")
+        self._pump_serial_no = self._ask_serial_no()
+        if serial_no is not None and self.serial_no != serial_no:
+            raise self.SerialNoMismatch(
+                f"Wrong pump serial number (expected {serial_no!r}, "
+                f"pump reported {self.serial_no!r})")
         n_channels = self._ask_num_channels()
+        self._run_cmd(f"{self.pump_addr}~1")
         self._channel_nos = list(range(1, n_channels+1))
         self.dispense_dirs = {
             x: self.DEFAULT_DISPENSE_DIR for x in self.channel_nos}
@@ -79,29 +97,85 @@ class RegloIccPump:
         if tubing_ids is not None:
             for ch_no, tubing_id in tubing_ids.items():
                 self.set_tubing_id(ch_no, tubing_id)
-        self._pump_serial_no = self._ask_serial_no()
         self._pump_model_no, self._pump_sw_ver, self._pump_head_code = \
             self._ask_pump_info()
 
     @classmethod
-    def from_serial_portname(cls, portname: str, *args, **kwargs
+    def list_connected_devices(
+            cls, usb_vidpid: Optional[Tuple[int, int]] = None
+            ) -> List[str]:
+        """
+        Get a list of all pumps currently connected via USB. Detection is
+        based on the USB vendor/product ID values reported by the OS. This
+        method does not attempt to open the devices or verify that they are
+        actually accessible. Pumps connected via USB-to-RS-232 interfaces will
+        not be detected.
+
+        Only supported on Windows, macOS and Linux.
+
+        :param usb_vidpid: A tuple ``(vid, pid)`` specifying a particular
+            USB vendor and product ID to look for instead of using the default
+            list of IDs.
+        :returns: A list of serial port names corresponding to connected pumps,
+            e.g. ``"COM42"`` or ``"/dev/ttyACM0"``, depending on your platform.
+        """
+        usb_vidpids = (
+            [tuple(usb_vidpid)] if usb_vidpid is not None
+            else cls.USB_HW_IDS
+            )
+        return [
+            info.device
+            for info in serial.tools.list_ports.comports()
+            if (info.vid, info.pid) in usb_vidpids
+            ]
+
+    @classmethod
+    def open_first_device(
+            cls,
+            usb_vidpid: Optional[Tuple[int, int]] = None,
+            **kwargs) -> 'RegloIccPump':
+        """
+        Opens the first USB-connected pump found. Intended for convenience in
+        situations where only one pump is connected.
+
+        :param kwargs: keyword arguments to pass to :meth:`__init__`
+        :raises DeviceNotFound: If no USB-connected pumps were found
+        :raises serial.SerialException: If something went wrong opening the
+            serial device
+
+        (also see exceptions raised by :meth:`__init__`)
+        """
+        portnames = cls.list_connected_devices(usb_vidpid=usb_vidpid)
+        if not portnames:
+            raise cls.DeviceNotFound("No USB-connected pumps found")
+        return cls.from_serial_portname(portnames[0], **kwargs)
+
+    @classmethod
+    def from_serial_portname(cls, portname: str, **kwargs
                              ) -> 'RegloIccPump':
         """
         Opens a serial port by name and initializes a :class:`RegloIccPump`
         instance with it
 
-        Parameters and exceptions are the same as for :meth:`__init__`, except
-        that ``portname`` takes the place of ``ser_port``, and pyserial may
-        raise :exc:`serial.SerialException`.
+        Behaves like :meth:`__init__`, except that ``portname`` takes the
+        place of ``ser_port``
 
         :param portname: Port identifier to pass to ``serial.Serial()``,
             e.g. ``"COM42"``, ``"/dev/ttyACM41"``, etc.
-
+        :param kwargs: Keyword arguments to pass to :meth:`__init__`
+        :raises serial.SerialException: If something went wrong opening the
+            serial device
         :returns: New :class:`RegloIccPump` instance
+
+        (also see exceptions raised by :meth:`__init__`)
         """
         ser_port = serial.Serial(
             portname, cls.BAUDRATE, timeout=cls.CMD_TIMEOUT_S)
-        return cls(ser_port, *args, **kwargs)
+        try:
+            return cls(ser_port, **kwargs)
+        except Exception as e:
+            ser_port.close()
+            raise e
 
     def _ask_num_channels(self) -> int:
         return self._run_query(f"{self.pump_addr}xA", (int,))[0]

@@ -6,6 +6,18 @@ class RegloIccPumpError(Exception):
     pass
 
 
+class DeviceNotFound(RegloIccPumpError):
+    """No USB-connected pumps were found"""
+    pass
+
+
+class SerialNoMismatch(RegloIccPumpError):
+    """
+    The serial number reported by the pump doesn't match what was expected
+    """
+    pass
+
+
 class CommandTimeout(RegloIccPumpError):
     """No response was received to a command"""
     pass

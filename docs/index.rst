@@ -4,7 +4,7 @@
 Driver class
 ------------
 .. autoclass:: reglo_icc_pump.RegloIccPump
-   :members: __init__, from_serial_portname, set_tubing_id, pump_vol, aspirate_vol, dispense_vol, is_running, wait_for_stop, show_msg, channel_nos, model_no, serial_no, sw_ver, head_code
+   :members: __init__, from_serial_portname, list_connected_devices, open_first_device, set_tubing_id, pump_vol, aspirate_vol, dispense_vol, is_running, wait_for_stop, show_msg, channel_nos, model_no, serial_no, sw_ver, head_code
    :member-order: bysource
 
 Enums
@@ -15,6 +15,10 @@ Enums
 Exceptions
 ----------
 .. autoclass:: reglo_icc_pump.RegloIccPump.RegloIccPumpError
+.. autoclass:: reglo_icc_pump.RegloIccPump.DeviceNotFound
+   :show-inheritance: True
+.. autoclass:: reglo_icc_pump.RegloIccPump.SerialNoMismatch
+   :show-inheritance: True
 .. autoclass:: reglo_icc_pump.RegloIccPump.CommandTimeout
    :show-inheritance: True
 .. autoclass:: reglo_icc_pump.RegloIccPump.InvalidResponse
