@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["reglo_icc_pump"]
+
+[project]
+name = "reglo-icc-pump-control"
+version = "0.1.4"
+readme = "README.md"
+requires-python = ">=3.6"
+license = {file = "LICENSE"}
+authors = [{name = "Greg Courville", email = "greg.courville@czbiohub.org"}]
+maintainers = [{name = "Greg Courville", email = "greg.courville@czbiohub.org"}]
+dependencies = ["pyserial>=3.5"]
+
+[project.optional-dependencies]
+docs = ["sphinx"]

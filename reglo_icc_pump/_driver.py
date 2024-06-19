@@ -6,60 +6,22 @@ from typing import (
 
 import serial
 
-
-__all__ = ["RegloIccPump"]
-
-
-class _enums:
-    class PumpDirection(Enum):
-        """Pump rotor rotation direction, as viewed from the front"""
-
-        #: Clockwise
-        CW = "cw"
-
-        #: Counter-clockwise
-        CCW = "ccw"
-
-        def opposite(self) -> '_enums.PumpDirection':
-            """Return the opposite direction"""
-            return self.CW if type(self)(self) == self.CCW else self.CCW
+from . import types
 
 
-_PumpDirectionOrLiteral = Union[_enums.PumpDirection, Literal["cw", "ccw"]]
-
-
-class _errors:
-    class RegloIccPumpError(Exception):
-        """Superclass of all other errors"""
-        pass
-
-    class CommandTimeout(RegloIccPumpError):
-        """No response was received to a command"""
-        pass
-
-    class InvalidResponse(RegloIccPumpError):
-        """Data received from the pump did not match expectations"""
-        pass
-
-    class RemoteError(RegloIccPumpError):
-        """The pump responded to a command with an error"""
-        pass
-
-    class InvalidTubingId(RegloIccPumpError):
-        """The pump reported the specified tubing inner diameter is invalid"""
-        pass
+_PumpDirectionOrLiteral = Union[types.PumpDirection, Literal['cw', 'ccw']]
 
 
 class RegloIccPump:
     BAUDRATE = 9600
     CMD_TIMEOUT_S = 2.
 
-    RegloIccPumpError = _errors.RegloIccPumpError
-    CommandTimeout = _errors.CommandTimeout
-    InvalidResponse = _errors.InvalidResponse
-    RemoteError = _errors.RemoteError
-    InvalidTubingId = _errors.InvalidTubingId
-    PumpDirection = _enums.PumpDirection
+    RegloIccPumpError = types.RegloIccPumpError
+    CommandTimeout = types.CommandTimeout
+    InvalidResponse = types.InvalidResponse
+    RemoteError = types.RemoteError
+    InvalidTubingId = types.InvalidTubingId
+    PumpDirection = types.PumpDirection
 
     DEFAULT_DISPENSE_DIR = PumpDirection.CW
 
