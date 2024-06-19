@@ -278,8 +278,7 @@ class RegloIccPump:
         """
         direction = self.PumpDirection(direction)
         dir_cmd = "J" if direction == self.PumpDirection.CW else "K"
-        if self.is_running(ch_no):
-            self.stop(ch_no)
+        self.stop(ch_no)
         self._run_cmd(f"{ch_no}{dir_cmd}{self.pump_addr}")  # set rotation dir
         self._run_cmd(f"{ch_no}O{self.pump_addr}")  # set to vol/time mode
         self._run_cmd(f"{ch_no}xff{self.pump_addr}1")  # speed from flow rate
