@@ -416,6 +416,7 @@ class RegloIccPump:
 
     @property
     def head_code(self) -> str:
+        """Pump head code reported by the pump"""
         return self._pump_head_code
 
     @staticmethod
