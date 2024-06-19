@@ -7,7 +7,9 @@ class RegloIccPumpError(Exception):
 
 
 class DeviceNotFound(RegloIccPumpError):
-    """No USB-connected pumps were found"""
+    """
+    No USB-connected pumps detected, or none matching the specified criteria
+    """
     pass
 
 

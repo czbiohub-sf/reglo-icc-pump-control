@@ -4,13 +4,13 @@ from reglo_icc_pump import RegloIccPump
 
 
 print("Pumps are connected on these ports:")
-for portname in RegloIccPump.list_connected_devices():
-    print(f"  {portname!r}")
+for portname, location in RegloIccPump.list_connected_devices():
+    print(f"  {portname} ({location})")
 
 print("\nSerial number check:")
 try:
-    foo = RegloIccPump.from_serial_portname(
-        "/dev/ttyACM0",
+    foo = RegloIccPump.from_usb_location(
+        "1-1:1.0",
         serial_no="WRONG1234"
         )
     print("  Okay!")

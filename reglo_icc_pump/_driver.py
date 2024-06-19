@@ -103,7 +103,7 @@ class RegloIccPump:
     @classmethod
     def list_connected_devices(
             cls, usb_vidpid: Optional[Tuple[int, int]] = None
-            ) -> List[str]:
+            ) -> List[Tuple[str, str]]:
         """
         Get a list of all pumps currently connected via USB. Detection is
         based on the USB vendor/product ID values reported by the OS. This
@@ -116,15 +116,20 @@ class RegloIccPump:
         :param usb_vidpid: A tuple ``(vid, pid)`` specifying a particular
             USB vendor and product ID to look for instead of using the default
             list of IDs.
-        :returns: A list of serial port names corresponding to connected pumps,
-            e.g. ``"COM42"`` or ``"/dev/ttyACM0"``, depending on your platform.
+        :returns: A list of tuples ``(portname, location)`` where ``portname``
+            the name of a logical serial port (e.g. ``"COM42"`` or
+            ``"/dev/ttyACM0"``) as recognized by pySerial and ``location`` is
+            a string representing which actual USB port the pump is connected
+            to. The latter is useful for connecting to a specific pump (see
+            :meth:`from_usb_location`) since they don't expose a serial number
+            via USB descriptors.
         """
         usb_vidpids = (
             [tuple(usb_vidpid)] if usb_vidpid is not None
             else cls.USB_HW_IDS
             )
         return [
-            info.device
+            (info.device, info.location)
             for info in serial.tools.list_ports.comports()
             if (info.vid, info.pid) in usb_vidpids
             ]
@@ -145,10 +150,36 @@ class RegloIccPump:
 
         (also see exceptions raised by :meth:`__init__`)
         """
-        portnames = cls.list_connected_devices(usb_vidpid=usb_vidpid)
-        if not portnames:
+        dev_list = cls.list_connected_devices(usb_vidpid=usb_vidpid)
+        if not dev_list:
             raise cls.DeviceNotFound("No USB-connected pumps found")
-        return cls.from_serial_portname(portnames[0], **kwargs)
+        return cls.from_serial_portname(dev_list[0][0], **kwargs)
+
+    @classmethod
+    def from_usb_location(
+            cls,
+            location: str,
+            usb_vidpid: Optional[Tuple[int, int]] = None,
+            **kwargs) -> 'RegloIccPump':
+        """
+        Opens a pump connected to a specific USB port.
+
+        :param location: string representing the USB port location, as obtained
+            from :meth:`list_connected_devices`
+        :param kwargs: keyword arguments to pass to :meth:`__init__`
+        :raises DeviceNotFound: If no pump was detected with a matching USB
+            location string
+        :raises serial.SerialException: If something went wrong opening the
+            serial device
+
+        (also see exceptions raised by :meth:`__init__`)
+        """
+        for portname, location_ in cls.list_connected_devices(
+                usb_vidpid=usb_vidpid):
+            if location_ == location:
+                return cls.from_serial_portname(portname, **kwargs)
+        raise cls.DeviceNotFound(
+            f"No pump detected at USB location {location!r}")
 
     @classmethod
     def from_serial_portname(cls, portname: str, **kwargs
