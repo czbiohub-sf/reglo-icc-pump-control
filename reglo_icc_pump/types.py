@@ -51,4 +51,7 @@ class PumpDirection(Enum):
 
     def opposite(self) -> 'PumpDirection':
         """Return the opposite direction"""
-        return self.CW if type(self)(self) == self.CCW else self.CCW
+        return (
+            PumpDirection.CW if self == PumpDirection.CCW
+            else PumpDirection.CCW
+            )
