@@ -103,7 +103,7 @@ class RegloIccPump:
     @classmethod
     def list_connected_devices(
             cls, usb_vidpid: Optional[Tuple[int, int]] = None
-            ) -> List[Tuple[str, str]]:
+            ) -> List[Tuple[str, Optional[str]]]:
         """
         Get a list of all pumps currently connected via USB. Detection is
         based on the USB vendor/product ID values reported by the OS. This
@@ -123,10 +123,12 @@ class RegloIccPump:
             to. The latter is useful for connecting to a specific pump (see
             :meth:`from_usb_location`) since they don't expose a serial number
             via USB descriptors.
+            ``location`` may be ``None`` on platforms other than Windows, MacOS
+            or Linux.
         """
         usb_vidpids = (
-            [tuple(usb_vidpid)] if usb_vidpid is not None
-            else cls.USB_HW_IDS
+            {tuple(usb_vidpid)} if usb_vidpid is not None
+            else set(cls.USB_HW_IDS)
             )
         return [
             (info.device, info.location)
@@ -143,6 +145,9 @@ class RegloIccPump:
         Opens the first USB-connected pump found. Intended for convenience in
         situations where only one pump is connected.
 
+        :param usb_vidpid: A tuple ``(vid, pid)`` specifying a particular
+            USB vendor and product ID to look for instead of using the default
+            list of IDs.
         :param kwargs: keyword arguments to pass to :meth:`__init__`
         :raises DeviceNotFound: If no USB-connected pumps were found
         :raises serial.SerialException: If something went wrong opening the
@@ -166,6 +171,9 @@ class RegloIccPump:
 
         :param location: string representing the USB port location, as obtained
             from :meth:`list_connected_devices`
+        :param usb_vidpid: A tuple ``(vid, pid)`` specifying a particular
+            USB vendor and product ID to look for instead of using the default
+            list of IDs.
         :param kwargs: keyword arguments to pass to :meth:`__init__`
         :raises DeviceNotFound: If no pump was detected with a matching USB
             location string
