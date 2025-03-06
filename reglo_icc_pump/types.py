@@ -35,8 +35,26 @@ class RemoteError(RegloIccPumpError):
     pass
 
 
-class InvalidTubingId(RegloIccPumpError):
-    """The pump reported that the specified tubing inner diameter is invalid"""
+class StallDetectionDetected(RegloIccPumpError):
+    """
+    The pump reports that the channel is still running but its time counter is
+    no longer counting up. This likely means the half baked stall detection
+    feature apparently introduced in firmware V204 has triggered.
+    """
+
+
+class InvalidParameter(RegloIccPumpError):
+    """
+    The pump reported (or the driver caught proactively) that a supplied
+    parameter for a pump command is out of range or otherwise invalid
+    """
+
+
+class InvalidTubingId(InvalidParameter):
+    """
+    The specified tubing inner diameter is not one of the acceptable values
+    """
+    pass
     pass
 
 

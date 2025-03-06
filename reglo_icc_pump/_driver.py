@@ -25,6 +25,7 @@ class RegloIccPump:
     InvalidResponse = types.InvalidResponse
     RemoteError = types.RemoteError
     InvalidTubingId = types.InvalidTubingId
+    StallDetectionDetected = types.StallDetectionDetected
     PumpDirection = types.PumpDirection
 
     DEFAULT_DISPENSE_DIR = PumpDirection.CW
@@ -39,6 +40,8 @@ class RegloIccPump:
     _pump_model_no: str
     _pump_sw_ver: str
     _pump_head_code: str
+    _last_odo_val: dict[int, int]
+    _last_odo_val_tstamp: dict[int, float]
 
     def __init__(
             self,
@@ -88,6 +91,7 @@ class RegloIccPump:
         n_channels = self._ask_num_channels()
         self._run_cmd(f"{self.pump_addr}~1")
         self._channel_nos = list(range(1, n_channels+1))
+        self._init_channel_odos()
         self.dispense_dirs = {
             x: self.DEFAULT_DISPENSE_DIR for x in self.channel_nos}
         if dispense_dirs is not None:
@@ -229,6 +233,27 @@ class RegloIccPump:
         if ch_no not in self.channel_nos:
             raise ValueError(f"Invalid channel number: {ch_no!r}")
 
+    def _ask_odometer_val(self, ch_no: int) -> int:
+        return self._run_query(f"{ch_no}xXX{self.pump_addr}", (int,))[0]
+
+    def _init_channel_odo(self, ch_no: int):
+        self._last_odo_val[ch_no] = -1
+        self._last_odo_val_tstamp[ch_no] = 0.
+
+    def _init_channel_odos(self):
+        self._last_odo_val = {}
+        self._last_odo_val_tstamp = {}
+        for ch_no in self._channel_nos:
+             self._init_channel_odo(ch_no)
+
+    def _on_stall_detection_detected(self, ch_no: int):
+        self.stop(ch_no)
+        self._run_cmd(f"{self.pump_addr}DA" + b"\x46\x55\x43\x4B".decode())
+        raise self.StallDetectionDetected(
+            f"Channel {ch_no} reported as running but is not counting up -- "
+            "stall detection likely activated"
+            )
+
     def _send_cmd(self, cmd: str) -> None:
         # print("XXXX cmd is", cmd)
         self.ser_port.write(cmd.encode() + b"\r")
@@ -326,6 +351,7 @@ class RegloIccPump:
         self._run_query(  # set flow rate
             f"{ch_no}ff{self.pump_addr}{self._format_vol_type2(rate)}", [str])
         self._run_cmd(f"{ch_no}H{self.pump_addr}")  # start pumping
+        self._init_channel_odo(ch_no)
         if blocking:
             self.wait_for_stop(ch_no)
 
@@ -396,7 +422,16 @@ class RegloIccPump:
         self._assert_valid_ch_no(ch_no)
         result = self._run_cmd(
             f"{ch_no}E{self.pump_addr}", check_success=False)
-        return result == b"+"
+        answer = result == b"+"
+        if answer:
+            last_odo = self._last_odo_val[ch_no]
+            self._last_odo_val[ch_no] = self._ask_odometer_val(ch_no)
+            now = time.monotonic()
+            if self._last_odo_val[ch_no] != last_odo:
+                self._last_odo_val_tstamp[ch_no] = now
+            elif now - self._last_odo_val_tstamp[ch_no] >= 2:
+                self._on_stall_detection_detected(ch_no)
+        return answer
 
     def wait_for_stop(self, ch_no: Optional[int] = None) -> None:
         """
