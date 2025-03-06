@@ -27,6 +27,12 @@ Exceptions
    :show-inheritance: True
 .. autoclass:: reglo_icc_pump.RegloIccPump.InvalidTubingId
    :show-inheritance: True
+.. autoclass:: reglo_icc_pump.RegloIccPump.InvalidFlowRate
+   :show-inheritance: True
+.. autoclass:: reglo_icc_pump.RegloIccPump.InvalidVolume
+   :show-inheritance: True
+.. autoclass:: reglo_icc_pump.RegloIccPump.StallDetectionDetected
+   :show-inheritance: True
 
 Usage example
 =============
