@@ -55,6 +55,15 @@ class InvalidTubingId(InvalidParameter):
     The specified tubing inner diameter is not one of the acceptable values
     """
     pass
+
+
+class InvalidFlowRate(InvalidParameter):
+    """The requested flow rate is out of range"""
+    pass
+
+
+class InvalidVolume(InvalidParameter):
+    """The requested volume is out of range"""
     pass
 
 

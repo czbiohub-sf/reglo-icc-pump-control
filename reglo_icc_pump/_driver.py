@@ -25,6 +25,8 @@ class RegloIccPump:
     InvalidResponse = types.InvalidResponse
     RemoteError = types.RemoteError
     InvalidTubingId = types.InvalidTubingId
+    InvalidFlowRate = types.InvalidFlowRate
+    InvalidVolume = types.InvalidVolume
     StallDetectionDetected = types.StallDetectionDetected
     PumpDirection = types.PumpDirection
 
@@ -40,6 +42,7 @@ class RegloIccPump:
     _pump_model_no: str
     _pump_sw_ver: str
     _pump_head_code: str
+    _max_flow_rate: dict[int, float | None]
     _last_odo_val: dict[int, int]
     _last_odo_val_tstamp: dict[int, float]
 
@@ -98,6 +101,7 @@ class RegloIccPump:
             self.dispense_dirs.update({
                 k: self.PumpDirection(v) for (k, v) in dispense_dirs.items()})
         self.tubing_ids: Dict[int, float] = {}
+        self._max_flow_rate = {ch_no: None for ch_no in self._channel_nos}
         if tubing_ids is not None:
             for ch_no, tubing_id in tubing_ids.items():
                 self.set_tubing_id(ch_no, tubing_id)
@@ -255,25 +259,36 @@ class RegloIccPump:
             )
 
     def _send_cmd(self, cmd: str) -> None:
-        # print("XXXX cmd is", cmd)
+        #print("XXXX cmd:", cmd)
         self.ser_port.write(cmd.encode() + b"\r")
 
-    def _run_cmd(self, cmd: str, check_success: bool = True) -> bytes:
-        self._send_cmd(cmd)
+    def _read_cmd_resp(self, check_success: bool, pass_resps: str) -> str:
         resp = self.ser_port.read(1)
+        #print("XXXX resp:", resp)
         if not resp:
             raise self.CommandTimeout()
-        if resp not in b"*#-+":
+        if resp not in b"*#-+" + pass_resps.encode("ascii"):
             raise self.InvalidResponse()  # TODO descriptive messages for these
-        if check_success and resp != b"*":
+        if (
+                check_success and resp != b"*"
+                and resp.decode("ascii") not in pass_resps
+                ):
             raise self.RemoteError()
-        return resp
+        return resp.decode("ascii")
+
+    def _run_cmd(self, cmd: str, check_success: bool = True,
+                 pass_resps: str = "") -> str:
+        self._send_cmd(cmd)
+        return self._read_cmd_resp(
+            check_success=check_success, pass_resps=pass_resps)
+
 
     def _run_query(self, cmd: str, field_types: Iterable[Callable]
                    ) -> List[Any]:
         field_types = list(field_types)
         self._send_cmd(cmd)
         resp = self.ser_port.read_until(b"\r\n").decode("ascii").strip()
+        #print("XXXX resp:", resp)
         if not resp:
             raise self.CommandTimeout()
         resp_fields = resp.rsplit(None, len(field_types) - 1)
@@ -292,6 +307,31 @@ class RegloIccPump:
                     f"Failed to convert value in field {field_idx}") from e
             return_vals.append(conv)
         return return_vals
+
+    def get_max_flow_rate(self, ch_no: int) -> float:
+        """
+        Gets the maximum flow rate setting for the installed tube size as
+        reported by the pump.
+
+        Values are cached until the next time tube IDs are reset.
+
+        :param ch_no: Pump channel number
+
+        :returns: The value reported back by the pump, in mL/minute
+
+        :raises CommandTimeout, InvalidResponse, RemoteError:
+            (see class descriptions)
+        """
+        if self._max_flow_rate[ch_no] is None:
+            flow_rate, flow_unit = self._run_query(
+                f"{ch_no}?{self.pump_addr}", [float, str])
+            if flow_unit != "ml/min":
+                raise self.InvalidResponse(
+                    f"Wasn't expecting unit string {flow_unit}")
+            self._max_flow_rate[ch_no] = flow_rate
+        self._read_cmd_resp(True, "")
+        # ^ FW bug, pump sends back a "*" after the expected response
+        return self._max_flow_rate[ch_no]
 
     def set_tubing_id(self, ch_no: int, inner_diam: float) -> float:
         """
@@ -313,6 +353,7 @@ class RegloIccPump:
                 f"{ch_no}++{self.pump_addr}{round(inner_diam * 100.):04d}")
         except self.RemoteError:
             raise self.InvalidTubingId(inner_diam)
+        self._max_flow_rate[ch_no] = None
         resp_val, resp_unit = self._run_query(
             f"{ch_no}++{self.pump_addr}", [float, str])
         self.tubing_ids[ch_no] = resp_val
@@ -337,6 +378,9 @@ class RegloIccPump:
         :param blocking: If true, only returns after pump operation finishes,
             otherwise returns immediately; defaults to ``True``
 
+        :raises InvalidVolume: if pump rejects the requested volume
+        :raises InvalidFlowRate: if pump rejects the requested flow rate
+
         :raises CommandTimeout, InvalidResponse, RemoteError:
             (see class descriptions)
         """
@@ -350,7 +394,23 @@ class RegloIccPump:
             f"{ch_no}vv{self.pump_addr}{self._format_vol_type2(vol)}", [str])
         self._run_query(  # set flow rate
             f"{ch_no}ff{self.pump_addr}{self._format_vol_type2(rate)}", [str])
-        self._run_cmd(f"{ch_no}H{self.pump_addr}")  # start pumping
+        # start pumping
+        resp = self._run_cmd(f"{ch_no}H{self.pump_addr}", pass_resps="-")
+        if resp == "-":
+            reason, limit_val = self._run_query(
+                f"{ch_no}xe", [str, str])
+            if reason == "R":
+                raise self.InvalidFlowRate(
+                    f"Pump reported flow rate setting ({rate:.2f} mL/min) is "
+                    f"invalid (limit: {limit_val!r})")
+            elif reason == "V":
+                raise self.InvalidParameter(
+                    f"Pump reported volume setting ({vol:.3f} mL) is "
+                    f"invalid (limit: {limit_val!r})")
+            else:
+                # We shouldn't ever see the invalid cycle count error
+                # because we don't implement cycles currently
+                raise InvalidResponse()
         self._init_channel_odo(ch_no)
         if blocking:
             self.wait_for_stop(ch_no)
@@ -422,7 +482,7 @@ class RegloIccPump:
         self._assert_valid_ch_no(ch_no)
         result = self._run_cmd(
             f"{ch_no}E{self.pump_addr}", check_success=False)
-        answer = result == b"+"
+        answer = result == "+"
         if answer:
             last_odo = self._last_odo_val[ch_no]
             self._last_odo_val[ch_no] = self._ask_odometer_val(ch_no)
@@ -449,7 +509,6 @@ class RegloIccPump:
             return
         while self.is_running(ch_no):
             pass
-        # print(f"XXXX done waiting for {ch_no}")
 
     def show_msg(self, msg: str) -> None:
         """
